@@ -15,7 +15,6 @@ replace = ap fromMaybe
 namesBoundInPat :: Pat -> [Name]
 namesBoundInPat (VarP name)             = [name]
 namesBoundInPat (TupP pats)             = pats >>= namesBoundInPat
-namesBoundInPat (UnboxedTupP pats)      = pats >>= namesBoundInPat
 namesBoundInPat (ConP _ pats)           = pats >>= namesBoundInPat
 namesBoundInPat (InfixP p1 _ p2)        = namesBoundInPat p1 ++ namesBoundInPat p2
 namesBoundInPat (TildeP pat)            = namesBoundInPat pat
@@ -32,6 +31,10 @@ namesBoundInPat (BangP pat)             = namesBoundInPat pat
 namesBoundInPat (ViewP _ pat)           = namesBoundInPat pat
 #endif
 
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 702
+namesBoundInPat (UnboxedTupP pats)      = pats >>= namesBoundInPat
+#endif
+
 namesBoundInPat _                       = []
 
 
@@ -42,8 +45,12 @@ namesBoundInDec (DataD _ name _ _ _)                = [name]
 namesBoundInDec (NewtypeD _ name _ _ _)             = [name]
 namesBoundInDec (TySynD name _ _)                   = [name]
 namesBoundInDec (ClassD _ name _ _ _)               = [name]
-namesBoundInDec (FamilyD _ name _ _)                = [name]
 namesBoundInDec (ForeignD (ImportF _ _ _ name _))   = [name]
+
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 612
+namesBoundInDec (FamilyD _ name _ _)                = [name]
+#endif
+
 namesBoundInDec _                                   = []
 
 genericalizeName :: Name -> Name

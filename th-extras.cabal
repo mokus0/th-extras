@@ -14,11 +14,17 @@ category:               Template Haskell
 synopsis:               A grab bag of useful functions for use with Template Haskell
 description:            A grab bag of useful functions for use with Template Haskell
 
-tested-with:            GHC == 7.2.2
+tested-with:            GHC == 6.8.3, GHC == 6.10.4, GHC == 6.12.3,
+                        GHC == 7.0.4, GHC == 7.2.1, GHC == 7.2.2
+
+flag base4
+  default:              True
 
 Library
   hs-source-dirs:       src
   exposed-modules:      Language.Haskell.TH.Extras
   build-depends:        base >= 3 && < 5,
-                        syb,
                         template-haskell
+  
+  if flag(base4)
+    build-depends:      base >= 4, syb
