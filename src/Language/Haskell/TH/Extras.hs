@@ -1,16 +1,48 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, TemplateHaskell #-}
 module Language.Haskell.TH.Extras where
 
 import Control.Monad
 import Data.Generics
 import Data.Maybe
 import Language.Haskell.TH
+import Language.Haskell.TH.Syntax
 
 intIs64 :: Bool
 intIs64 = toInteger (maxBound :: Int) > 2^32
 
 replace :: (a -> Maybe a) -> (a -> a)
 replace = ap fromMaybe
+
+composeExprs :: [ExpQ] -> ExpQ
+composeExprs [] = [| id |]
+composeExprs [f] = f
+composeExprs (f:fs) = [| $f . $(composeExprs fs) |]
+
+nameOfCon :: Con -> Name
+nameOfCon (NormalC  name _) = name
+nameOfCon (RecC     name _) = name
+nameOfCon (InfixC _ name _) = name
+nameOfCon (ForallC _ _ con) = nameOfCon con
+
+-- |WARNING: discards binders in GADTs and existentially-quantified constructors
+argTypesOfCon :: Con -> [Type]
+argTypesOfCon (NormalC  _ args) = map snd args
+argTypesOfCon (RecC     _ args) = [t | (_,_,t) <- args]
+argTypesOfCon (InfixC x _ y)    = map snd [x,y]
+argTypesOfCon (ForallC _ _ con) = argTypesOfCon con
+
+nameOfBinder :: TyVarBndr -> Name
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 700
+nameOfBinder (PlainTV n)    = n
+nameOfBinder (KindedTV n _) = n
+#else
+nameOfBinder = id
+type TyVarBndr = Name
+#endif
+
+varsBoundInCon :: Con -> [TyVarBndr]
+varsBoundInCon (ForallC bndrs _ con) = bndrs ++ varsBoundInCon con
+varsBoundInCon _ = []
 
 namesBoundInPat :: Pat -> [Name]
 namesBoundInPat (VarP name)             = [name]
@@ -68,4 +100,37 @@ genericalizeDecs decs = everywhere (mkT fixName) decs
         names = decs >>= namesBoundInDec
         genericalizedNames = [ (n, genericalizeName n) | n <- names]
         fixName = replace (`lookup` genericalizedNames)
+
+headOfType :: Type -> Name
+headOfType (ForallT _ _ ty) = headOfType ty
+headOfType (VarT name) = name
+headOfType (ConT name) = name
+headOfType (TupleT n) = tupleTypeName n
+headOfType ArrowT = ''(->)
+headOfType ListT = ''[]
+headOfType (AppT t _) = headOfType t
+
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 612
+headOfType (SigT t _) = headOfType t
+#endif
+
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 702
+headOfType (UnboxedTupleT n) = unboxedTupleTypeName n
+#endif
+
+occursInType :: Name -> Type -> Bool
+occursInType var ty = case ty of
+        ForallT bndrs _ ty
+            | any (var ==) (map nameOfBinder bndrs)
+                -> False
+            | otherwise
+                -> occursInType var ty
+        VarT name
+            | name == var -> True
+            | otherwise   -> False
+        AppT ty1 ty2 -> occursInType var ty1 || occursInType var ty2
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 612
+        SigT ty _ -> occursInType var ty
+#endif
+        _ -> False
 

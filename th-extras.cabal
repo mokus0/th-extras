@@ -1,5 +1,5 @@
 name:                   th-extras
-version:                0.0.0.1
+version:                0.0.0.2
 stability:              experimental
 
 cabal-version:          >= 1.6
@@ -11,8 +11,13 @@ license:                PublicDomain
 homepage:               https://github.com/mokus0/th-extras
 
 category:               Template Haskell
-synopsis:               A grab bag of useful functions for use with Template Haskell
-description:            A grab bag of useful functions for use with Template Haskell
+synopsis:               A grab bag of functions for use with Template Haskell
+description:            A grab bag of functions for use with Template Haskell.
+                        .
+                        This is basically the place I put all my ugly CPP hacks to support
+                        the ever-changing interface of the template haskell system by
+                        providing high-level operations and making sure they work on as many
+                        versions of Template Haskell as I can.
 
 tested-with:            GHC == 6.8.3, GHC == 6.10.4, GHC == 6.12.3,
                         GHC == 7.0.4, GHC == 7.2.1, GHC == 7.2.2
