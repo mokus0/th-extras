@@ -23,6 +23,10 @@ nameOfCon (NormalC  name _) = name
 nameOfCon (RecC     name _) = name
 nameOfCon (InfixC _ name _) = name
 nameOfCon (ForallC _ _ con) = nameOfCon con
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
+nameOfCon (GadtC [name] _ _)    = name
+nameOfCon (RecGadtC [name] _ _) = name
+#endif
 
 -- |WARNING: discards binders in GADTs and existentially-quantified constructors
 argTypesOfCon :: Con -> [Type]
@@ -30,6 +34,10 @@ argTypesOfCon (NormalC  _ args) = map snd args
 argTypesOfCon (RecC     _ args) = [t | (_,_,t) <- args]
 argTypesOfCon (InfixC x _ y)    = map snd [x,y]
 argTypesOfCon (ForallC _ _ con) = argTypesOfCon con
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
+argTypesOfCon (GadtC _ args _)    = map snd args
+argTypesOfCon (RecGadtC _ args _) = [t | (_,_,t) <- args]
+#endif
 
 nameOfBinder :: TyVarBndr -> Name
 #if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 700
@@ -73,14 +81,26 @@ namesBoundInPat _                       = []
 namesBoundInDec :: Dec -> [Name]
 namesBoundInDec (FunD name _)                       = [name]
 namesBoundInDec (ValD pat _ _)                      = namesBoundInPat pat
+
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
+namesBoundInDec (DataD _ name _ _ _ _)              = [name]
+namesBoundInDec (NewtypeD _ name _ _ _ _)           = [name]
+#else
 namesBoundInDec (DataD _ name _ _ _)                = [name]
 namesBoundInDec (NewtypeD _ name _ _ _)             = [name]
+#endif
+
 namesBoundInDec (TySynD name _ _)                   = [name]
 namesBoundInDec (ClassD _ name _ _ _)               = [name]
 namesBoundInDec (ForeignD (ImportF _ _ _ name _))   = [name]
 
-#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 612
+#if defined(__GLASGOW_HASKELL__)
+#if __GLASGOW_HASKELL__ >= 800
+namesBoundInDec (OpenTypeFamilyD (TypeFamilyHead name _ _ _))     = [name]
+namesBoundInDec (ClosedTypeFamilyD (TypeFamilyHead name _ _ _) _) = [name]
+#elif __GLASGOW_HASKELL__ >= 612
 namesBoundInDec (FamilyD _ name _ _)                = [name]
+#endif
 #endif
 
 namesBoundInDec _                                   = []
