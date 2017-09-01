@@ -116,7 +116,7 @@ genericalizeDecs :: [Dec] -> [Dec]
 genericalizeDecs decs = everywhere (mkT fixName) decs
     where
         -- get all names bound in the decs and make them generic
-        -- at every occurence in decs.
+        -- at every occurrence in decs.
         names = decs >>= namesBoundInDec
         genericalizedNames = [ (n, genericalizeName n) | n <- names]
         fixName = replace (`lookup` genericalizedNames)
