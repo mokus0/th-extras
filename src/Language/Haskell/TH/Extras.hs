@@ -1,9 +1,10 @@
-{-# LANGUAGE CPP, TemplateHaskell #-}
+{-# LANGUAGE CPP, LambdaCase, TemplateHaskell #-}
 module Language.Haskell.TH.Extras where
 
 import Control.Monad
 import Data.Generics
 import Data.Maybe
+import qualified Data.Set as Set
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 
@@ -154,3 +155,111 @@ occursInType var ty = case ty of
 #endif
         _ -> False
 
+-- | Assuming that we're building an instance of the form C (T v_1 ... v_(n-1)) for some GADT T, this function
+-- takes a list of the variables v_1 ... v_(n-1) used in the instance head, as well as the result type of some data
+-- constructor, say T x_1 ... x_(n-1) x_n, as well as the type t of some argument to it, and substitutes any of
+-- x_i (1 <= i <= n-1) occurring in t for the corresponding v_i, taking care to avoid name capture by foralls in t.
+substVarsWith
+  :: [Name] -- Names of variables used in the instance head in argument order
+  -> Type -- Result type of constructor
+  -> Type -- Type of argument to the constructor
+  -> Type -- Type of argument with variables substituted for instance head variables.
+substVarsWith topVars resultType argType = subst Set.empty argType
+  where
+    topVars' = reverse topVars
+    AppT resultType' _indexType = resultType
+    subst bs = \case
+      ForallT bndrs cxt t ->
+        let bs' = Set.union bs (Set.fromList (map tyVarBndrName bndrs))
+        in ForallT bndrs (map (subst bs') cxt) (subst bs' t)
+      AppT f x -> AppT (subst bs f) (subst bs x)
+      SigT t k -> SigT (subst bs t) k
+      VarT v -> if Set.member v bs
+        then VarT v
+        else VarT (findVar v topVars' resultType')
+      InfixT t1 x t2 -> InfixT (subst bs t1) x (subst bs t2)
+      UInfixT t1 x t2 -> UInfixT (subst bs t1) x (subst bs t2)
+      ParensT t -> ParensT (subst bs t)
+      -- The following cases could all be covered by an "x -> x" case, but I'd rather know if new cases
+      -- need to be handled specially in future versions of Template Haskell.
+      PromotedT n -> PromotedT n
+      ConT n -> ConT n
+      TupleT k -> TupleT k
+      UnboxedTupleT k -> UnboxedTupleT k
+      UnboxedSumT k -> UnboxedSumT k
+      ArrowT -> ArrowT
+      EqualityT -> EqualityT
+      ListT -> ListT
+      PromotedTupleT k -> PromotedTupleT k
+      PromotedNilT -> PromotedNilT
+      PromotedConsT -> PromotedConsT
+      StarT -> StarT
+      ConstraintT -> ConstraintT
+      LitT l -> LitT l
+      WildCardT -> WildCardT
+    findVar v (tv:_) (AppT _ (VarT v')) | v == v' = tv
+    findVar v (_:tvs) (AppT t (VarT _)) = findVar v tvs t
+    findVar v _ _ = error $ "substVarsWith: couldn't look up variable substitution for " <> show v
+      <> " with topVars: " <> show topVars <> " resultType: " <> show resultType <> " argType: " <> show argType
+
+-- | Determine the 'Name' being bound by a 'TyVarBndr'.
+tyVarBndrName :: TyVarBndr -> Name
+tyVarBndrName = \case
+  PlainTV n -> n
+  KindedTV n _ -> n
+
+-- | Determine the arity of a kind.
+kindArity :: Kind -> Int
+kindArity = \case
+  ForallT _ _ t -> kindArity t
+  AppT (AppT ArrowT _) t -> 1 + kindArity t
+  SigT t _ -> kindArity t
+  ParensT t -> kindArity t
+  _ -> 0
+
+-- | Given the name of a type constructor, determine its full arity
+tyConArity :: Name -> Q Int
+tyConArity n = do
+  (ts, ka) <- tyConArity' n
+  return (length ts + ka)
+
+-- | Given the name of a type constructor, determine a list of type variables bound as parameters by
+-- its declaration, and the arity of the kind of type being defined (i.e. how many more arguments would
+-- need to be supplied in addition to the bound parameters in order to obtain an ordinary type of kind *).
+-- If the supplied 'Name' is anything other than a data or newtype, produces an error.
+tyConArity' :: Name -> Q ([TyVarBndr], Int)
+tyConArity' n = reify n >>= return . \case
+  TyConI (DataD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
+  TyConI (NewtypeD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
+  _ -> error $ "tyConArity': Supplied name reified to something other than a data declaration: " <> show n
+
+-- | Determine the constructors bound by a data or newtype declaration. Errors out if supplied with another
+-- sort of declaration.
+decCons :: Dec -> [Con]
+decCons = \case
+  DataD _ _ _ _ cs _ -> cs
+  NewtypeD _ _ _ _ c _ -> [c]
+  _ -> error "decCons: Declaration found was not a data or newtype declaration."
+
+-- | Determines the name of a data constructor. It's an error if the 'Con' binds more than one name (which
+-- happens in the case where you use GADT syntax, and give multiple data constructor names separated by commas
+-- in a type signature in the where clause).
+conName :: Con -> Name
+conName = \case
+  NormalC n _ -> n
+  RecC n _ -> n
+  InfixC _ n _ -> n
+  ForallC _ _ c' -> conName c'
+  GadtC [n] _ _ -> n
+  RecGadtC [n] _ _ -> n
+  _ -> error "conName: GADT constructors with multiple names not yet supported"
+
+-- | Determine the arity of a data constructor.
+conArity :: Con -> Int
+conArity = \case
+  NormalC _ ts -> length ts
+  RecC _ ts -> length ts
+  InfixC _ _ _ -> 2
+  ForallC _ _ c' -> conArity c'
+  GadtC _ ts _ -> length ts
+  RecGadtC _ ts _ -> length ts
