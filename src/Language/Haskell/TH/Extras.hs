@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, LambdaCase, TemplateHaskell #-}
+{-# LANGUAGE CPP, TemplateHaskell #-}
 module Language.Haskell.TH.Extras where
 
 import Control.Monad
@@ -168,7 +168,7 @@ substVarsWith topVars resultType argType = subst Set.empty argType
   where
     topVars' = reverse topVars
     AppT resultType' _indexType = resultType
-    subst bs = \case
+    subst bs ty = case ty of
       ForallT bndrs cxt t ->
         let bs' = Set.union bs (Set.fromList (map tyVarBndrName bndrs))
         in ForallT bndrs (map (subst bs') cxt) (subst bs' t)
@@ -204,13 +204,13 @@ substVarsWith topVars resultType argType = subst Set.empty argType
 
 -- | Determine the 'Name' being bound by a 'TyVarBndr'.
 tyVarBndrName :: TyVarBndr -> Name
-tyVarBndrName = \case
+tyVarBndrName tvb = case tvb of
   PlainTV n -> n
   KindedTV n _ -> n
 
 -- | Determine the arity of a kind.
 kindArity :: Kind -> Int
-kindArity = \case
+kindArity k = case k of
   ForallT _ _ t -> kindArity t
   AppT (AppT ArrowT _) t -> 1 + kindArity t
   SigT t _ -> kindArity t
@@ -228,15 +228,17 @@ tyConArity n = do
 -- need to be supplied in addition to the bound parameters in order to obtain an ordinary type of kind *).
 -- If the supplied 'Name' is anything other than a data or newtype, produces an error.
 tyConArity' :: Name -> Q ([TyVarBndr], Int)
-tyConArity' n = reify n >>= return . \case
-  TyConI (DataD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
-  TyConI (NewtypeD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
-  _ -> error $ "tyConArity': Supplied name reified to something other than a data declaration: " <> show n
+tyConArity' n = do
+  r <- reify n
+  return $ case r of
+    TyConI (DataD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
+    TyConI (NewtypeD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
+    _ -> error $ "tyConArity': Supplied name reified to something other than a data declaration: " <> show n
 
 -- | Determine the constructors bound by a data or newtype declaration. Errors out if supplied with another
 -- sort of declaration.
 decCons :: Dec -> [Con]
-decCons = \case
+decCons d = case d of
   DataD _ _ _ _ cs _ -> cs
   NewtypeD _ _ _ _ c _ -> [c]
   _ -> error "decCons: Declaration found was not a data or newtype declaration."
@@ -245,7 +247,7 @@ decCons = \case
 -- happens in the case where you use GADT syntax, and give multiple data constructor names separated by commas
 -- in a type signature in the where clause).
 conName :: Con -> Name
-conName = \case
+conName c = case c of
   NormalC n _ -> n
   RecC n _ -> n
   InfixC _ n _ -> n
@@ -256,7 +258,7 @@ conName = \case
 
 -- | Determine the arity of a data constructor.
 conArity :: Con -> Int
-conArity = \case
+conArity c = case c of
   NormalC _ ts -> length ts
   RecC _ ts -> length ts
   InfixC _ _ _ -> 2
