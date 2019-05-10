@@ -4,12 +4,13 @@ module Language.Haskell.TH.Extras where
 import Control.Monad
 import Data.Generics
 import Data.Maybe
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 
 intIs64 :: Bool
-intIs64 = toInteger (maxBound :: Int) > 2^32
+intIs64 = toInteger (maxBound :: Int) > 2^(32 :: Integer)
 
 replace :: (a -> Maybe a) -> (a -> a)
 replace = ap fromMaybe
@@ -19,6 +20,9 @@ composeExprs [] = [| id |]
 composeExprs [f] = f
 composeExprs (f:fs) = [| $f . $(composeExprs fs) |]
 
+-- | Determines the name of a data constructor. It's an error if the 'Con' binds more than one name (which
+-- happens in the case where you use GADT syntax, and give multiple data constructor names separated by commas
+-- in a type signature in the where clause).
 nameOfCon :: Con -> Name
 nameOfCon (NormalC  name _) = name
 nameOfCon (RecC     name _) = name
@@ -26,7 +30,9 @@ nameOfCon (InfixC _ name _) = name
 nameOfCon (ForallC _ _ con) = nameOfCon con
 #if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
 nameOfCon (GadtC [name] _ _)    = name
+nameOfCon (GadtC _ _ _)    = error $ "nameOfCon: GadtC: only single constructor names are supported"
 nameOfCon (RecGadtC [name] _ _) = name
+nameOfCon (RecGadtC _ _ _)    = error $ "nameOfCon: RecGadtC: only single constructor names are supported"
 #endif
 
 -- |WARNING: discards binders in GADTs and existentially-quantified constructors
@@ -130,28 +136,29 @@ headOfType (TupleT n) = tupleTypeName n
 headOfType ArrowT = ''(->)
 headOfType ListT = ''[]
 headOfType (AppT t _) = headOfType t
-
 #if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 612
 headOfType (SigT t _) = headOfType t
 #endif
-
 #if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 702
 headOfType (UnboxedTupleT n) = unboxedTupleTypeName n
+#endif
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 704
+headOfType ty = error $ "headOfType: Unhandled type: " ++ show ty
 #endif
 
 occursInType :: Name -> Type -> Bool
 occursInType var ty = case ty of
-        ForallT bndrs _ ty
+        ForallT bndrs _ ty'
             | any (var ==) (map nameOfBinder bndrs)
                 -> False
             | otherwise
-                -> occursInType var ty
+                -> occursInType var ty'
         VarT name
             | name == var -> True
             | otherwise   -> False
         AppT ty1 ty2 -> occursInType var ty1 || occursInType var ty2
 #if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 612
-        SigT ty _ -> occursInType var ty
+        SigT ty' _ -> occursInType var ty'
 #endif
         _ -> False
 
@@ -168,13 +175,18 @@ substVarsWith topVars resultType argType = subst Set.empty argType
   where
     topVars' = reverse topVars
     AppT resultType' _indexType = resultType
+    subst :: Set Name -> Type -> Type
     subst bs ty = case ty of
       -- Several of the following cases could all be covered by an "x -> x" case, but
       -- I'd rather know if new cases need to be handled specially in future versions
       -- of Template Haskell.
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 710
       ForallT bndrs cxt t ->
-        let bs' = Set.union bs (Set.fromList (map tyVarBndrName bndrs))
+        let bs' = Set.union bs (Set.fromList (map nameOfBinder bndrs))
         in ForallT bndrs (map (subst bs') cxt) (subst bs' t)
+#else
+      ForallT {} -> error "substVarsWith: ForallT substitutions have not been implemented for GHCs prior to 7.10"
+#endif
       AppT f x -> AppT (subst bs f) (subst bs x)
       SigT t k -> SigT (subst bs t) k
       VarT v -> if Set.member v bs
@@ -182,7 +194,6 @@ substVarsWith topVars resultType argType = subst Set.empty argType
         else VarT (findVar v topVars' resultType')
       ConT n -> ConT n
       TupleT k -> TupleT k
-      UnboxedTupleT k -> UnboxedTupleT k
       ArrowT -> ArrowT
       ListT -> ListT
 #if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
@@ -192,10 +203,10 @@ substVarsWith topVars resultType argType = subst Set.empty argType
       UnboxedSumT k -> UnboxedSumT k
       WildCardT -> WildCardT
 #endif
-#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 784
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 710
       EqualityT -> EqualityT
 #endif
-#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 763
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 706
       ConstraintT -> ConstraintT
       LitT l -> LitT l
       PromotedConsT -> PromotedConsT
@@ -204,27 +215,31 @@ substVarsWith topVars resultType argType = subst Set.empty argType
       PromotedTupleT k -> PromotedTupleT k
       StarT -> StarT
 #endif
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ > 700
+      UnboxedTupleT k -> UnboxedTupleT k
+#endif
     findVar v (tv:_) (AppT _ (VarT v')) | v == v' = tv
     findVar v (_:tvs) (AppT t (VarT _)) = findVar v tvs t
     findVar v _ _ = error $ "substVarsWith: couldn't look up variable substitution for " ++ show v
       ++ " with topVars: " ++ show topVars ++ " resultType: " ++ show resultType ++ " argType: " ++ show argType
 
--- | Determine the 'Name' being bound by a 'TyVarBndr'.
-tyVarBndrName :: TyVarBndr -> Name
-tyVarBndrName tvb = case tvb of
-  PlainTV n -> n
-  KindedTV n _ -> n
-
 -- | Determine the arity of a kind.
+-- Starting in template-haskell 2.8.0.0, 'Kind' and 'Type' became synonymous.
 kindArity :: Kind -> Int
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ < 706
+kindArity k = case k of
+  StarK -> 0
+  ArrowK k1 k2 -> 1 + kindArity k1 + kindArity k2
+#else
 kindArity k = case k of
   ForallT _ _ t -> kindArity t
   AppT (AppT ArrowT _) t -> 1 + kindArity t
   SigT t _ -> kindArity t
-#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
   ParensT t -> kindArity t
 #endif
   _ -> 0
+#endif
 
 -- | Given the name of a type constructor, determine its full arity
 tyConArity :: Name -> Q Int
@@ -240,32 +255,27 @@ tyConArity' :: Name -> Q ([TyVarBndr], Int)
 tyConArity' n = do
   r <- reify n
   return $ case r of
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
     TyConI (DataD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
     TyConI (NewtypeD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
+#else
+    TyConI (DataD _ _ ts _ _) -> (ts, 0)
+    TyConI (NewtypeD _ _ ts _ _) -> (ts, 0)
+#endif
     _ -> error $ "tyConArity': Supplied name reified to something other than a data declaration: " ++ show n
 
 -- | Determine the constructors bound by a data or newtype declaration. Errors out if supplied with another
 -- sort of declaration.
 decCons :: Dec -> [Con]
 decCons d = case d of
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
   DataD _ _ _ _ cs _ -> cs
   NewtypeD _ _ _ _ c _ -> [c]
-  _ -> error "decCons: Declaration found was not a data or newtype declaration."
-
--- | Determines the name of a data constructor. It's an error if the 'Con' binds more than one name (which
--- happens in the case where you use GADT syntax, and give multiple data constructor names separated by commas
--- in a type signature in the where clause).
-conName :: Con -> Name
-conName c = case c of
-  NormalC n _ -> n
-  RecC n _ -> n
-  InfixC _ n _ -> n
-  ForallC _ _ c' -> conName c'
-#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
-  GadtC [n] _ _ -> n
-  RecGadtC [n] _ _ -> n
+#else
+  DataD _ _ _ cs _ -> cs
+  NewtypeD _ _ _ c _ -> [c]
 #endif
-  _ -> error "conName: GADT constructors with multiple names not yet supported"
+  _ -> error "decCons: Declaration found was not a data or newtype declaration."
 
 -- | Determine the arity of a data constructor.
 conArity :: Con -> Int
