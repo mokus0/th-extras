@@ -4,7 +4,7 @@ module Language.Haskell.TH.Extras where
 import Control.Monad
 import Data.Generics
 import Data.Maybe
-import Data.Semigroup ((<>))
+import Data.Monoid ((<>))
 import qualified Data.Set as Set
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
