@@ -33,6 +33,7 @@ Library
   hs-source-dirs:       src
   exposed-modules:      Language.Haskell.TH.Extras
   build-depends:        base >= 3 && < 5,
+                        containers,
                         template-haskell
   
   if flag(base4)
