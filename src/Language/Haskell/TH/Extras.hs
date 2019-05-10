@@ -4,6 +4,7 @@ module Language.Haskell.TH.Extras where
 import Control.Monad
 import Data.Generics
 import Data.Maybe
+import Data.Semigroup ((<>))
 import qualified Data.Set as Set
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
@@ -169,6 +170,9 @@ substVarsWith topVars resultType argType = subst Set.empty argType
     topVars' = reverse topVars
     AppT resultType' _indexType = resultType
     subst bs ty = case ty of
+      -- Several of the following cases could all be covered by an "x -> x" case, but
+      -- I'd rather know if new cases need to be handled specially in future versions
+      -- of Template Haskell.
       ForallT bndrs cxt t ->
         let bs' = Set.union bs (Set.fromList (map tyVarBndrName bndrs))
         in ForallT bndrs (map (subst bs') cxt) (subst bs' t)
@@ -177,26 +181,30 @@ substVarsWith topVars resultType argType = subst Set.empty argType
       VarT v -> if Set.member v bs
         then VarT v
         else VarT (findVar v topVars' resultType')
-      InfixT t1 x t2 -> InfixT (subst bs t1) x (subst bs t2)
-      UInfixT t1 x t2 -> UInfixT (subst bs t1) x (subst bs t2)
-      ParensT t -> ParensT (subst bs t)
-      -- The following cases could all be covered by an "x -> x" case, but I'd rather know if new cases
-      -- need to be handled specially in future versions of Template Haskell.
-      PromotedT n -> PromotedT n
       ConT n -> ConT n
       TupleT k -> TupleT k
       UnboxedTupleT k -> UnboxedTupleT k
-      UnboxedSumT k -> UnboxedSumT k
       ArrowT -> ArrowT
-      EqualityT -> EqualityT
       ListT -> ListT
-      PromotedTupleT k -> PromotedTupleT k
-      PromotedNilT -> PromotedNilT
-      PromotedConsT -> PromotedConsT
-      StarT -> StarT
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
+      InfixT t1 x t2 -> InfixT (subst bs t1) x (subst bs t2)
+      ParensT t -> ParensT (subst bs t)
+      UInfixT t1 x t2 -> UInfixT (subst bs t1) x (subst bs t2)
+      UnboxedSumT k -> UnboxedSumT k
+      WildCardT -> WildCardT
+#endif
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 784
+      EqualityT -> EqualityT
+#endif
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 763
       ConstraintT -> ConstraintT
       LitT l -> LitT l
-      WildCardT -> WildCardT
+      PromotedConsT -> PromotedConsT
+      PromotedNilT -> PromotedNilT
+      PromotedT n -> PromotedT n
+      PromotedTupleT k -> PromotedTupleT k
+      StarT -> StarT
+#endif
     findVar v (tv:_) (AppT _ (VarT v')) | v == v' = tv
     findVar v (_:tvs) (AppT t (VarT _)) = findVar v tvs t
     findVar v _ _ = error $ "substVarsWith: couldn't look up variable substitution for " <> show v
@@ -252,8 +260,10 @@ conName c = case c of
   RecC n _ -> n
   InfixC _ n _ -> n
   ForallC _ _ c' -> conName c'
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
   GadtC [n] _ _ -> n
   RecGadtC [n] _ _ -> n
+#endif
   _ -> error "conName: GADT constructors with multiple names not yet supported"
 
 -- | Determine the arity of a data constructor.
@@ -263,5 +273,7 @@ conArity c = case c of
   RecC _ ts -> length ts
   InfixC _ _ _ -> 2
   ForallC _ _ c' -> conArity c'
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
   GadtC _ ts _ -> length ts
   RecGadtC _ ts _ -> length ts
+#endif
