@@ -229,7 +229,7 @@ kindArity :: Kind -> Int
 #if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ < 706
 kindArity k = case k of
   StarK -> 0
-  ArrowK k1 k2 -> 1 + kindArity k1 + kindArity k2
+  ArrowK _ k2 -> 1 + kindArity k2
 #else
 kindArity k = case k of
   ForallT _ _ t -> kindArity t
