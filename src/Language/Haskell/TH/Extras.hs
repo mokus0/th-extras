@@ -184,6 +184,8 @@ substVarsWith topVars resultType argType = subst Set.empty argType
       ForallT bndrs cxt t ->
         let bs' = Set.union bs (Set.fromList (map nameOfBinder bndrs))
         in ForallT bndrs (map (subst bs') cxt) (subst bs' t)
+#else
+      ForallT {} -> error "substVarsWith: ForallT substitutions have not been implemented for GHCs prior to 7.10"
 #endif
       AppT f x -> AppT (subst bs f) (subst bs x)
       SigT t k -> SigT (subst bs t) k
