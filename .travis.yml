@@ -31,6 +31,12 @@ matrix:
     - env: CABALVER=1.22 GHCVER=7.10.3
       compiler: ": #GHC 7.10.3"
       addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3], sources: [hvr-ghc]}}
+    - env: CABALVER=2.2 GHCVER=8.4.3
+      compiler: ": #GHC 8.4.3"
+      addons: {apt: {packages: [cabal-install-2.2,ghc-8.4.3], sources: [hvr-ghc]}}
+    - env: CABALVER=2.2 GHCVER=8.6.5
+      compiler: ": #GHC 8.6.5"
+      addons: {apt: {packages: [cabal-install-2.2,ghc-8.6.5], sources: [hvr-ghc]}}
     - env: CABALVER=head GHCVER=head
       compiler: ": #GHC head"
       addons: {apt: {packages: [cabal-install-head,ghc-head], sources: [hvr-ghc]}}
