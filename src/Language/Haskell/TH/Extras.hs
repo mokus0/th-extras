@@ -4,7 +4,6 @@ module Language.Haskell.TH.Extras where
 import Control.Monad
 import Data.Generics
 import Data.Maybe
-import Data.Monoid ((<>))
 import qualified Data.Set as Set
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
@@ -207,8 +206,8 @@ substVarsWith topVars resultType argType = subst Set.empty argType
 #endif
     findVar v (tv:_) (AppT _ (VarT v')) | v == v' = tv
     findVar v (_:tvs) (AppT t (VarT _)) = findVar v tvs t
-    findVar v _ _ = error $ "substVarsWith: couldn't look up variable substitution for " <> show v
-      <> " with topVars: " <> show topVars <> " resultType: " <> show resultType <> " argType: " <> show argType
+    findVar v _ _ = error $ "substVarsWith: couldn't look up variable substitution for " ++ show v
+      ++ " with topVars: " ++ show topVars ++ " resultType: " ++ show resultType ++ " argType: " ++ show argType
 
 -- | Determine the 'Name' being bound by a 'TyVarBndr'.
 tyVarBndrName :: TyVarBndr -> Name
@@ -222,7 +221,9 @@ kindArity k = case k of
   ForallT _ _ t -> kindArity t
   AppT (AppT ArrowT _) t -> 1 + kindArity t
   SigT t _ -> kindArity t
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
   ParensT t -> kindArity t
+#endif
   _ -> 0
 
 -- | Given the name of a type constructor, determine its full arity
@@ -241,7 +242,7 @@ tyConArity' n = do
   return $ case r of
     TyConI (DataD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
     TyConI (NewtypeD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
-    _ -> error $ "tyConArity': Supplied name reified to something other than a data declaration: " <> show n
+    _ -> error $ "tyConArity': Supplied name reified to something other than a data declaration: " ++ show n
 
 -- | Determine the constructors bound by a data or newtype declaration. Errors out if supplied with another
 -- sort of declaration.
