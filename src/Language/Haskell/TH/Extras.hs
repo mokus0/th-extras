@@ -6,7 +6,6 @@ import Data.Generics
 import Data.Maybe
 import qualified Data.Set as Set
 import Language.Haskell.TH
-import Language.Haskell.TH.Syntax
 
 intIs64 :: Bool
 intIs64 = toInteger (maxBound :: Int) > 2^32
@@ -19,6 +18,9 @@ composeExprs [] = [| id |]
 composeExprs [f] = f
 composeExprs (f:fs) = [| $f . $(composeExprs fs) |]
 
+-- | Determines the name of a data constructor. It's an error if the 'Con' binds more than one name (which
+-- happens in the case where you use GADT syntax, and give multiple data constructor names separated by commas
+-- in a type signature in the where clause).
 nameOfCon :: Con -> Name
 nameOfCon (NormalC  name _) = name
 nameOfCon (RecC     name _) = name
@@ -182,7 +184,6 @@ substVarsWith topVars resultType argType = subst Set.empty argType
         else VarT (findVar v topVars' resultType')
       ConT n -> ConT n
       TupleT k -> TupleT k
-      UnboxedTupleT k -> UnboxedTupleT k
       ArrowT -> ArrowT
       ListT -> ListT
 #if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
@@ -203,6 +204,9 @@ substVarsWith topVars resultType argType = subst Set.empty argType
       PromotedT n -> PromotedT n
       PromotedTupleT k -> PromotedTupleT k
       StarT -> StarT
+#endif
+#if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ > 704
+      UnboxedTupleT k -> UnboxedTupleT k
 #endif
     findVar v (tv:_) (AppT _ (VarT v')) | v == v' = tv
     findVar v (_:tvs) (AppT t (VarT _)) = findVar v tvs t
@@ -240,32 +244,27 @@ tyConArity' :: Name -> Q ([TyVarBndr], Int)
 tyConArity' n = do
   r <- reify n
   return $ case r of
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
     TyConI (DataD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
     TyConI (NewtypeD _ _ ts mk _ _) -> (ts, fromMaybe 0 (fmap kindArity mk))
+#else
+    TyConI (DataD _ _ ts _ _) -> (ts, 0)
+    TyConI (NewtypeD _ _ ts _ _) -> (ts, 0)
+#endif
     _ -> error $ "tyConArity': Supplied name reified to something other than a data declaration: " ++ show n
 
 -- | Determine the constructors bound by a data or newtype declaration. Errors out if supplied with another
 -- sort of declaration.
 decCons :: Dec -> [Con]
 decCons d = case d of
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
   DataD _ _ _ _ cs _ -> cs
   NewtypeD _ _ _ _ c _ -> [c]
-  _ -> error "decCons: Declaration found was not a data or newtype declaration."
-
--- | Determines the name of a data constructor. It's an error if the 'Con' binds more than one name (which
--- happens in the case where you use GADT syntax, and give multiple data constructor names separated by commas
--- in a type signature in the where clause).
-conName :: Con -> Name
-conName c = case c of
-  NormalC n _ -> n
-  RecC n _ -> n
-  InfixC _ n _ -> n
-  ForallC _ _ c' -> conName c'
-#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 800
-  GadtC [n] _ _ -> n
-  RecGadtC [n] _ _ -> n
+#else
+  DataD _ _ _ cs _ -> cs
+  NewtypeD _ _ _ c _ -> [c]
 #endif
-  _ -> error "conName: GADT constructors with multiple names not yet supported"
+  _ -> error "decCons: Declaration found was not a data or newtype declaration."
 
 -- | Determine the arity of a data constructor.
 conArity :: Con -> Int
