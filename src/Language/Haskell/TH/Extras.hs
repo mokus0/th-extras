@@ -8,6 +8,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
+import Language.Haskell.TH.Datatype.TyVarBndr
 
 intIs64 :: Bool
 intIs64 = toInteger (maxBound :: Int) > 2^(32 :: Integer)
@@ -46,16 +47,10 @@ argTypesOfCon (GadtC _ args _)    = map snd args
 argTypesOfCon (RecGadtC _ args _) = [t | (_,_,t) <- args]
 #endif
 
-nameOfBinder :: TyVarBndr -> Name
-#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 700
-nameOfBinder (PlainTV n)    = n
-nameOfBinder (KindedTV n _) = n
-#else
-nameOfBinder = id
-type TyVarBndr = Name
-#endif
+nameOfBinder :: TyVarBndr_ a -> Name
+nameOfBinder = tvName
 
-varsBoundInCon :: Con -> [TyVarBndr]
+varsBoundInCon :: Con -> [TyVarBndrSpec]
 varsBoundInCon (ForallC bndrs _ con) = bndrs ++ varsBoundInCon con
 varsBoundInCon _ = []
 
@@ -149,7 +144,7 @@ headOfType ty = error $ "headOfType: Unhandled type: " ++ show ty
 occursInType :: Name -> Type -> Bool
 occursInType var ty = case ty of
         ForallT bndrs _ ty'
-            | any (var ==) (map nameOfBinder bndrs)
+            | any (var ==) (map tvName bndrs)
                 -> False
             | otherwise
                 -> occursInType var ty'
@@ -182,7 +177,7 @@ substVarsWith topVars resultType argType = subst Set.empty argType
       -- of Template Haskell.
 #if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 710
       ForallT bndrs cxt t ->
-        let bs' = Set.union bs (Set.fromList (map nameOfBinder bndrs))
+        let bs' = Set.union bs (Set.fromList (map tvName bndrs))
         in ForallT bndrs (map (subst bs') cxt) (subst bs' t)
 #else
       ForallT {} -> error "substVarsWith: ForallT substitutions have not been implemented for GHCs prior to 7.10"
@@ -251,7 +246,7 @@ tyConArity n = do
 -- its declaration, and the arity of the kind of type being defined (i.e. how many more arguments would
 -- need to be supplied in addition to the bound parameters in order to obtain an ordinary type of kind *).
 -- If the supplied 'Name' is anything other than a data or newtype, produces an error.
-tyConArity' :: Name -> Q ([TyVarBndr], Int)
+tyConArity' :: Name -> Q ([TyVarBndrUnit], Int)
 tyConArity' n = do
   r <- reify n
   return $ case r of
