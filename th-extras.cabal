@@ -34,7 +34,7 @@ Library
   exposed-modules:      Language.Haskell.TH.Extras
   build-depends:        base >= 3 && < 5,
                         containers,
-                        template-haskell,
+                        template-haskell < 2.18,
                         th-abstraction >= 0.4 && < 0.5
 
   if flag(base4)
