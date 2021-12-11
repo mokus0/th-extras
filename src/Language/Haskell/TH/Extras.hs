@@ -57,7 +57,11 @@ varsBoundInCon _ = []
 namesBoundInPat :: Pat -> [Name]
 namesBoundInPat (VarP name)             = [name]
 namesBoundInPat (TupP pats)             = pats >>= namesBoundInPat
+#if MIN_VERSION_template_haskell(2,18,0)
+namesBoundInPat (ConP _ _ pats)         = pats >>= namesBoundInPat
+#else
 namesBoundInPat (ConP _ pats)           = pats >>= namesBoundInPat
+#endif
 namesBoundInPat (InfixP p1 _ p2)        = namesBoundInPat p1 ++ namesBoundInPat p2
 namesBoundInPat (TildeP pat)            = namesBoundInPat pat
 namesBoundInPat (AsP name pat)          = name : namesBoundInPat pat
