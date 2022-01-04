@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* Fix GHC 8.0 build
+
 * Support GHC 9.0 and 9.2
 
 ## 0.0.0.5 - 2019-05-13
