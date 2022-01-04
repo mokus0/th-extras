@@ -195,8 +195,10 @@ substVarsWith topVars resultType argType = subst Set.empty argType
       InfixT t1 x t2 -> InfixT (subst bs t1) x (subst bs t2)
       ParensT t -> ParensT (subst bs t)
       UInfixT t1 x t2 -> UInfixT (subst bs t1) x (subst bs t2)
-      UnboxedSumT k -> UnboxedSumT k
       WildCardT -> WildCardT
+#endif
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 802
+      UnboxedSumT k -> UnboxedSumT k
 #endif
 #if defined (__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ >= 710
       EqualityT -> EqualityT
