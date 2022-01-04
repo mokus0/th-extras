@@ -1,6 +1,6 @@
 # Revision history for th-extras
 
-## Unreleased
+## 0.0.0.6 - 2022-01-04
 
 * Fix GHC 8.0 build
 
