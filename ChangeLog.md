@@ -1,8 +1,10 @@
 # Revision history for th-extras
 
-## Unreleased
+## 0.0.0.6 - 2022-01-04
 
-* Support GHC 9.0
+* Fix GHC 8.0 build
+
+* Support GHC 9.0 and 9.2
 
 ## 0.0.0.5 - 2019-05-13
 
