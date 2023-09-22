@@ -252,7 +252,11 @@ tyConArity n = do
 -- its declaration, and the arity of the kind of type being defined (i.e. how many more arguments would
 -- need to be supplied in addition to the bound parameters in order to obtain an ordinary type of kind *).
 -- If the supplied 'Name' is anything other than a data or newtype, produces an error.
+#if defined(__GLASGOW_HASKELL__) && __GLASGOW_HASKELL__ < 908
 tyConArity' :: Name -> Q ([TyVarBndrUnit], Int)
+#else
+tyConArity' :: Name -> Q ([TyVarBndr BndrVis], Int)
+#endif
 tyConArity' n = do
   r <- reify n
   return $ case r of
